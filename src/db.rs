@@ -21,15 +21,9 @@ pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 pub(crate) fn setup_db(url: &str, password: String) -> anyhow::Result<Arc<SQLConnection>> {
     let manager = ConnectionManager::<SqliteConnection>::new(url);
 
-    // tests can be slow, make timeout longer
-    #[cfg(test)]
-    let timeout = Duration::from_secs(30);
-    #[cfg(not(test))]
-    let timeout = Duration::from_secs(5);
-
     let pool = Pool::builder()
-        .max_size(50)
-        .connection_timeout(timeout)
+        .max_size(5)
+        .connection_timeout(Duration::from_secs(5))
         .connection_customizer(Box::new(ConnectionOptions {
             key: password,
             enable_wal: true,
