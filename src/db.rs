@@ -15,14 +15,17 @@ use fedimint_core::core::OperationId;
 use fedimint_core::Amount;
 use fedimint_ln_common::lightning_invoice::Bolt11Invoice;
 use std::{sync::Arc, time::Duration};
+use anyhow::anyhow;
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 pub(crate) fn setup_db(url: &str, password: String) -> anyhow::Result<Arc<SQLConnection>> {
     let manager = ConnectionManager::<SqliteConnection>::new(url);
 
+    check_correct_password(url, password.clone())?;
+
     let pool = Pool::builder()
-        .max_size(5)
+        .max_size(50)
         .connection_timeout(Duration::from_secs(5))
         .connection_customizer(Box::new(ConnectionOptions {
             key: password,
@@ -33,6 +36,28 @@ pub(crate) fn setup_db(url: &str, password: String) -> anyhow::Result<Arc<SQLCon
         .test_on_check_out(true)
         .build(manager)?;
     Ok(Arc::new(SQLConnection { db: pool }))
+}
+
+fn check_correct_password(url: &str, password: String) -> anyhow::Result<()> {
+    Pool::builder()
+        .max_size(1)
+        .connection_timeout(Duration::from_millis(500))
+        .connection_customizer(Box::new(ConnectionOptions {
+            key: password,
+            enable_wal: true,
+            enable_foreign_keys: true,
+            busy_timeout: Some(Duration::from_secs(15)),
+        }))
+        .test_on_check_out(true)
+        .build(ConnectionManager::<SqliteConnection>::new(url))
+        .map_err(|err| {
+            if err.to_string() == "timed out waiting for connection: file is not a database" {
+                anyhow!("Incorrect Password")
+            } else {
+                anyhow!("Could not open database: {err}")
+            }
+        })?;
+    Ok(())
 }
 
 pub trait DBConnection {
